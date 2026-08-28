@@ -13,13 +13,7 @@ const AD_ACCOUNT_ID = "act_2272933602783318";
 
 const app = express();
 
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
+app.use(cors());
 app.use(express.json());
 
 const server = new Server(
@@ -34,7 +28,6 @@ const server = new Server(
   }
 );
 
-// Herramientas
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -64,7 +57,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Ejecución
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -111,38 +103,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-const transports = new Map();
+let activeTransport = null;
 
 app.get("/sse", async (req, res) => {
-  // Configurar endpoint de mensajes con URL absoluta completa para Render
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
-  const protocol = req.headers["x-forwarded-proto"] || "https";
-  const messageEndpoint = `${protocol}://${host}/messages`;
-
-  const transport = new SSEServerTransport(messageEndpoint, res);
-  transports.set(transport.sessionId, transport);
-
-  req.on("close", () => {
-    transports.delete(transport.sessionId);
-  });
-
-  await server.connect(transport);
+  activeTransport = new SSEServerTransport("/messages", res);
+  await server.connect(activeTransport);
 });
 
 app.post("/messages", async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const transport = transports.get(sessionId);
-
-  if (transport) {
-    await transport.handlePostMessage(req, res, req.body);
+  if (activeTransport) {
+    await activeTransport.handlePostMessage(req, res);
   } else {
-    // Si no encuentra la sesión por query param, intenta con la última activa
-    const fallbackTransport = Array.from(transports.values()).pop();
-    if (fallbackTransport) {
-      await fallbackTransport.handlePostMessage(req, res, req.body);
-    } else {
-      res.status(404).send("Sesión no encontrada");
-    }
+    res.status(400).send("No active session");
   }
 });
 
