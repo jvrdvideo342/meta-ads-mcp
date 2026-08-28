@@ -34,7 +34,7 @@ const server = new Server(
   }
 );
 
-// Definición de herramientas
+// Herramientas
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -64,7 +64,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Llamadas a herramientas
+// Ejecución
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -114,7 +114,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 const transports = new Map();
 
 app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
+  // Configurar endpoint de mensajes con URL absoluta completa para Render
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const protocol = req.headers["x-forwarded-proto"] || "https";
+  const messageEndpoint = `${protocol}://${host}/messages`;
+
+  const transport = new SSEServerTransport(messageEndpoint, res);
   transports.set(transport.sessionId, transport);
 
   req.on("close", () => {
@@ -131,7 +136,13 @@ app.post("/messages", async (req, res) => {
   if (transport) {
     await transport.handlePostMessage(req, res, req.body);
   } else {
-    res.status(404).send("Sesión no encontrada");
+    // Si no encuentra la sesión por query param, intenta con la última activa
+    const fallbackTransport = Array.from(transports.values()).pop();
+    if (fallbackTransport) {
+      await fallbackTransport.handlePostMessage(req, res, req.body);
+    } else {
+      res.status(404).send("Sesión no encontrada");
+    }
   }
 });
 
