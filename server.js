@@ -13,7 +13,6 @@ const AD_ACCOUNT_ID = "act_2272933602783318";
 
 const app = express();
 
-// Configuración global de CORS requerida por Gemini
 app.use(
   cors({
     origin: "*",
@@ -112,18 +111,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-let transport = null;
+const transports = new Map();
 
 app.get("/sse", async (req, res) => {
-  transport = new SSEServerTransport("/messages", res);
+  const transport = new SSEServerTransport("/messages", res);
+  transports.set(transport.sessionId, transport);
+
+  req.on("close", () => {
+    transports.delete(transport.sessionId);
+  });
+
   await server.connect(transport);
 });
 
 app.post("/messages", async (req, res) => {
+  const sessionId = req.query.sessionId;
+  const transport = transports.get(sessionId);
+
   if (transport) {
-    await transport.handlePostMessage(req, res);
+    await transport.handlePostMessage(req, res, req.body);
   } else {
-    res.status(400).send("No hay sesión SSE activa");
+    res.status(404).send("Sesión no encontrada");
   }
 });
 
