@@ -1,5 +1,6 @@
 import express from "express";
 import axios from "axios";
+import cors from "cors";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
@@ -7,10 +8,20 @@ import {
   ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 
-const ACCESS_TOKEN = "EAATkJFrUTuYBSfUxmeYrxpTExRaSBrpVLZAw30uFJMmU5hFxChLHS9FLR2gVMuPveVQbSXqmNhwxU3LlZBfbI7vVU43d1XDCoOKPoBBRgqMct76VAdHu5sVZAnu86oaHZBU7EKBwREque0m4IyahYi9GeX0yhQYomnDyqKZA6Quq65KigALz7crpgkBIBodcXW5zVx38qDLzFy1jfthKEV5J1mrun45a8WfogYC67ZBUtupMVEmR7ZATzLyA407PXlRWUxfCxJ2NDnjgsfRWO303QZDZD";
+const ACCESS_TOKEN = "EAATkJFrUtUYBSFUxmeYrxpTExRaSBrpVLZAw30uFJMmU5hFxChLHS9FLR2gMVuPveVQbSXqmNhwxU3L1ZBfbi7vVU43d1XDCoKPoBBRgqMct76VAdHu5sVZAnu86oaHZBU7EKBwREqugG";
 const AD_ACCOUNT_ID = "act_2272933602783318";
 
 const app = express();
+
+// Configuración global de CORS requerida por Gemini
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+app.use(express.json());
 
 const server = new Server(
   {
@@ -24,6 +35,7 @@ const server = new Server(
   }
 );
 
+// Definición de herramientas
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -53,6 +65,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+// Llamadas a herramientas
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -99,27 +112,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-const transports = new Map();
+let transport = null;
 
 app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  transports.set(transport.sessionId, transport);
-
-  req.on("close", () => {
-    transports.delete(transport.sessionId);
-  });
-
+  transport = new SSEServerTransport("/messages", res);
   await server.connect(transport);
 });
 
 app.post("/messages", async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const transport = transports.get(sessionId);
-
   if (transport) {
     await transport.handlePostMessage(req, res);
   } else {
-    res.status(404).send("Sesión no encontrada");
+    res.status(400).send("No hay sesión SSE activa");
   }
 });
 
