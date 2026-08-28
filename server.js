@@ -7,11 +7,21 @@ const AD_ACCOUNT_ID = "act_2272933602783318";
 
 const app = express();
 
+// 1. CORS universal y captura de cuerpo
 app.use(cors({ origin: "*", methods: ["GET", "POST", "OPTIONS"], allowedHeaders: ["*"] }));
 app.use(express.json());
 
-// 1. Endpoint SSE para registro y descubrimiento
-app.get("/sse", (req, res) => {
+// 2. Registro detallado de peticiones en la consola de Render
+app.use((req, res, next) => {
+  console.log(`[PETICION] Método: ${req.method} | URL: ${req.url} | Headers:`, JSON.stringify(req.headers));
+  if (req.method === "POST") {
+    console.log(`[BODY]:`, JSON.stringify(req.body));
+  }
+  next();
+});
+
+// 3. Endpoint SSE para registro y descubrimiento
+app.get(["/sse", "/"], (req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -20,7 +30,6 @@ app.get("/sse", (req, res) => {
   });
 
   const sessionId = "session_" + Date.now();
-  // Se envía la URL pública completa para que Spark sepa exactamente a dónde enviar los comandos POST
   res.write(`event: endpoint\ndata: https://meta-ads-mcp-68s7.onrender.com/messages?sessionId=${sessionId}\n\n`);
 
   const keepAlive = setInterval(() => {
@@ -33,9 +42,9 @@ app.get("/sse", (req, res) => {
   });
 });
 
-// 2. Endpoint RPC para ejecutar las herramientas
-app.post("/messages", async (req, res) => {
-  const { jsonrpc, id, method, params } = req.body || {};
+// 4. Endpoint RPC para responder a Gemini
+app.post(["/messages", "/"], async (req, res) => {
+  const { id, method, params } = req.body || {};
 
   // Handshake inicial
   if (method === "initialize") {
@@ -50,12 +59,12 @@ app.post("/messages", async (req, res) => {
     });
   }
 
-  // Notificación de inicio completado
+  // Confirmación
   if (method === "notifications/initialized") {
     return res.status(200).send("OK");
   }
 
-  // Listar herramientas disponibles
+  // Lista de herramientas disponibles
   if (method === "tools/list") {
     return res.json({
       jsonrpc: "2.0",
@@ -86,7 +95,7 @@ app.post("/messages", async (req, res) => {
     });
   }
 
-  // Ejecución de llamadas
+  // Ejecución de herramientas
   if (method === "tools/call") {
     const toolName = params?.name;
     const args = params?.arguments || {};
